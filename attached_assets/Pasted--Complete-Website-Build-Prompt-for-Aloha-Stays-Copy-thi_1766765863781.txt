@@ -1,0 +1,886 @@
+# Complete Website Build Prompt for Aloha Stays
+
+Copy this entire prompt to your website AI:
+
+---
+
+## PROJECT: Build a booking website for "Aloha Stays" - 2 Airbnb properties in Waikiki
+
+---
+
+## BUSINESS REQUIREMENTS
+
+### Properties:
+- **Property 1:** [Property Name/Address]
+- **Property 2:** [Property Name/Address]
+- Both located in Waikiki, Oahu, Hawaii
+
+### Booking Features Required:
+1. Real-time availability calendar synced with Airbnb
+2. Online booking with Stripe payment OR "Pay Later" option
+3. Prevent double bookings (Airbnb + Website sync)
+4. Email confirmation after booking
+5. Guest inquiry form
+6. Instant booking or request-to-book options
+
+---
+
+## PART 1: WEBSITE STRUCTURE & PAGES
+
+### Homepage
+```
+Hero Section:
+- H1: "Aloha Stays | Waikiki Vacation Rentals"
+- Subheading: "2 Beautiful Properties in the Heart of Waikiki"
+- Large hero image of one property
+- CTA: "View Properties" and "Book Now"
+
+Value Propositions:
+- ✓ Prime Waikiki Location
+- ✓ Walking Distance to Beach
+- ✓ Fully Equipped Kitchens
+- ✓ Free WiFi & Parking
+- ✓ 5-Star Guest Reviews
+
+Property Cards:
+- Property 1: Image, title, capacity, price/night, "View Details"
+- Property 2: Image, title, capacity, price/night, "View Details"
+
+Why Choose Aloha Stays:
+- Local ownership
+- 24/7 support
+- Flexible check-in
+- Clean & sanitized
+
+Testimonials Section:
+- Display 3-5 guest reviews with ratings
+
+CTA Section:
+- "Ready to Book Your Waikiki Stay?"
+- Book Now button
+```
+
+### Property Detail Pages (/property-1, /property-2)
+```
+Each property page includes:
+
+1. Photo Gallery (10-15 high-quality images)
+   - Bedroom views
+   - Living room
+   - Kitchen
+   - Bathroom
+   - Building exterior
+   - View/balcony
+   - Neighborhood
+
+2. Property Overview:
+   - H1: "[Property Name] - Waikiki Vacation Rental"
+   - Location: Address and map
+   - Capacity: "Sleeps X guests"
+   - Bedrooms: X bedrooms
+   - Bathrooms: X bathrooms
+   - Description: 2-3 paragraphs about the property
+
+3. Amenities List:
+   - WiFi
+   - Kitchen
+   - Air Conditioning
+   - TV
+   - Parking
+   - Washer/Dryer
+   - Beach gear
+   - etc.
+
+4. House Rules:
+   - Check-in time
+   - Check-out time
+   - No smoking
+   - No parties
+   - Pet policy
+
+5. Location Information:
+   - Distance to Waikiki Beach
+   - Nearby attractions
+   - Restaurants nearby
+   - Parking details
+   - Google Maps embed
+
+6. Availability Calendar (see Part 2)
+
+7. Pricing Section:
+   - Nightly rate: $XXX/night
+   - Weekly discount: X%
+   - Monthly discount: X%
+   - Cleaning fee: $XXX
+   - Service fee breakdown
+
+8. Booking Section:
+   - Check-in date picker
+   - Check-out date picker
+   - Number of guests dropdown
+   - "Check Availability" button
+   - Price calculation display
+   - "Book Now" or "Request to Book" button
+```
+
+### Booking Page (/booking)
+```
+Booking Summary:
+- Property name and image
+- Check-in/out dates
+- Number of guests
+- Number of nights
+- Price breakdown:
+  * Nightly rate × nights
+  * Cleaning fee
+  * Service fee
+  * Taxes
+  * TOTAL
+
+Guest Information Form:
+- Full Name *
+- Email *
+- Phone *
+- Country
+- Special requests (textarea)
+
+Payment Options:
+[ ] Pay Now with Card (Stripe)
+    - Secure payment
+    - Instant confirmation
+    
+[ ] Pay Later
+    - Submit booking request
+    - Owner will send payment link
+    - Manual approval
+
+Terms & Conditions:
+- Cancellation policy
+- House rules agreement
+- Privacy policy
+
+[Book Now] or [Submit Request] button
+```
+
+### Contact Page (/contact)
+```
+H1: "Contact Aloha Stays"
+
+Contact Form:
+- Name
+- Email
+- Phone
+- Property of interest (dropdown)
+- Dates interested
+- Message
+- [Send Message] button
+
+Direct Contact:
+- Email: info@alohastays.com
+- Phone: (808) XXX-XXXX
+- Address: Waikiki, Honolulu, HI
+
+Office Hours:
+- Monday-Sunday: 8am-8pm HST
+- 24/7 Emergency Support
+
+FAQ Section:
+- Common questions about booking
+- Cancellation policy
+- Check-in process
+```
+
+### About Page (/about)
+```
+H1: "About Aloha Stays"
+
+Story:
+- Who you are
+- Why you started
+- Local knowledge
+- Commitment to guests
+
+Our Properties:
+- Brief intro to each property
+- Why Waikiki is special
+- What makes your properties unique
+
+Local Recommendations:
+- Best beaches
+- Restaurants
+- Activities
+- Hidden gems
+```
+
+---
+
+## PART 2: AIRBNB CALENDAR SYNC (CRITICAL)
+
+### Requirement:
+Prevent double bookings by syncing with Airbnb calendar in real-time.
+
+### Implementation Options:
+
+**Option A: iCal Sync (Recommended - Simpler)**
+```javascript
+// Airbnb provides iCal URLs for each listing
+// Property 1 iCal: https://www.airbnb.com/calendar/ical/LISTING_ID.ics
+// Property 2 iCal: https://www.airbnb.com/calendar/ical/LISTING_ID.ics
+
+// Import iCal library
+import ical from 'ical';
+import axios from 'axios';
+
+// Function to fetch and parse Airbnb calendar
+async function getAirbnbBlockedDates(icalUrl) {
+  const response = await axios.get(icalUrl);
+  const events = ical.parseICS(response.data);
+  
+  const blockedDates = [];
+  for (let event in events) {
+    if (events.hasOwnProperty(event)) {
+      const ev = events[event];
+      if (ev.type === 'VEVENT') {
+        // Add check-in to check-out dates as blocked
+        blockedDates.push({
+          start: ev.start,
+          end: ev.end,
+          summary: ev.summary
+        });
+      }
+    }
+  }
+  return blockedDates;
+}
+
+// Sync calendars every hour
+setInterval(async () => {
+  const property1Blocked = await getAirbnbBlockedDates(PROPERTY1_ICAL_URL);
+  const property2Blocked = await getAirbnbBlockedDates(PROPERTY2_ICAL_URL);
+  
+  // Update your database with blocked dates
+  await updateBlockedDates('property1', property1Blocked);
+  await updateBlockedDates('property2', property2Blocked);
+}, 3600000); // Every hour
+```
+
+**How to Get iCal URLs:**
+1. Go to your Airbnb listing
+2. Click "Availability Settings"
+3. Scroll to "Calendar sync"
+4. Copy the "Export calendar" URL
+5. Add to your website config
+
+**Option B: Airbnb API (More Complex)**
+```javascript
+// If you want full 2-way sync (website → Airbnb too)
+// Requires Airbnb API access (apply at airbnb.com/partner)
+// More complex but allows blocking Airbnb when booked on website
+```
+
+### Calendar Component Implementation:
+
+```javascript
+// Use a calendar library like react-calendar or react-dates
+import { Calendar } from 'react-calendar';
+import { useState, useEffect } from 'react';
+
+function PropertyCalendar({ propertyId }) {
+  const [blockedDates, setBlockedDates] = useState([]);
+  
+  useEffect(() => {
+    // Fetch blocked dates from your database (synced from Airbnb)
+    fetch(`/api/blocked-dates/${propertyId}`)
+      .then(res => res.json())
+      .then(data => setBlockedDates(data));
+  }, [propertyId]);
+  
+  const isDateBlocked = (date) => {
+    return blockedDates.some(blocked => 
+      date >= new Date(blocked.start) && 
+      date <= new Date(blocked.end)
+    );
+  };
+  
+  return (
+    <Calendar
+      tileDisabled={({ date }) => isDateBlocked(date)}
+      minDate={new Date()} // Can't book past dates
+    />
+  );
+}
+```
+
+---
+
+## PART 3: STRIPE PAYMENT INTEGRATION
+
+### Setup:
+```javascript
+// Install Stripe
+npm install @stripe/stripe-js @stripe/react-stripe-js
+
+// Backend: Create payment intent
+import Stripe from 'stripe';
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+app.post('/api/create-payment-intent', async (req, res) => {
+  const { amount, bookingDetails } = req.body;
+  
+  try {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amount * 100, // Convert to cents
+      currency: 'usd',
+      metadata: {
+        property: bookingDetails.property,
+        checkIn: bookingDetails.checkIn,
+        checkOut: bookingDetails.checkOut,
+        guests: bookingDetails.guests
+      }
+    });
+    
+    res.json({ clientSecret: paymentIntent.client_secret });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+```
+
+### Payment Form Component:
+```javascript
+import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+function PaymentForm({ bookingDetails, totalAmount }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [error, setError] = useState(null);
+  const [processing, setProcessing] = useState(false);
+  
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setProcessing(true);
+    
+    try {
+      // Create payment intent
+      const response = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: totalAmount, bookingDetails })
+      });
+      
+      const { clientSecret } = await response.json();
+      
+      // Confirm payment
+      const result = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card: elements.getElement(CardElement),
+          billing_details: {
+            name: bookingDetails.guestName,
+            email: bookingDetails.guestEmail
+          }
+        }
+      });
+      
+      if (result.error) {
+        setError(result.error.message);
+        setProcessing(false);
+      } else {
+        // Payment successful!
+        await createBooking(bookingDetails, result.paymentIntent.id);
+        window.location.href = '/booking-confirmation?id=' + result.paymentIntent.id;
+      }
+    } catch (err) {
+      setError(err.message);
+      setProcessing(false);
+    }
+  };
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <CardElement />
+      {error && <div className="error">{error}</div>}
+      <button disabled={!stripe || processing}>
+        {processing ? 'Processing...' : `Pay $${totalAmount}`}
+      </button>
+    </form>
+  );
+}
+```
+
+---
+
+## PART 4: "PAY LATER" OPTION
+
+### Implementation:
+```javascript
+// When user selects "Pay Later"
+async function handlePayLater(bookingDetails) {
+  try {
+    // Create pending booking in database
+    const booking = await fetch('/api/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...bookingDetails,
+        status: 'pending_payment',
+        paymentMethod: 'pay_later'
+      })
+    });
+    
+    const result = await booking.json();
+    
+    // Send email to owner with booking details
+    await fetch('/api/notify-owner', {
+      method: 'POST',
+      body: JSON.stringify({
+        bookingId: result.id,
+        property: bookingDetails.property,
+        guest: bookingDetails.guestName,
+        checkIn: bookingDetails.checkIn,
+        checkOut: bookingDetails.checkOut,
+        total: bookingDetails.total
+      })
+    });
+    
+    // Send confirmation email to guest
+    await fetch('/api/send-guest-email', {
+      method: 'POST',
+      body: JSON.stringify({
+        to: bookingDetails.guestEmail,
+        subject: 'Booking Request Received - Aloha Stays',
+        message: `Thank you for your booking request!
+        
+        Property: ${bookingDetails.property}
+        Check-in: ${bookingDetails.checkIn}
+        Check-out: ${bookingDetails.checkOut}
+        Total: $${bookingDetails.total}
+        
+        We'll send you a payment link within 24 hours.
+        
+        Mahalo!
+        Aloha Stays Team`
+      })
+    });
+    
+    // Redirect to confirmation page
+    window.location.href = '/booking-request-submitted';
+    
+  } catch (error) {
+    console.error('Pay Later error:', error);
+    alert('There was an error submitting your request. Please try again.');
+  }
+}
+```
+
+### Owner Email Notification:
+```javascript
+// Email template for owner
+const ownerEmailTemplate = `
+New Booking Request - Aloha Stays
+
+Property: ${property}
+Guest: ${guestName}
+Email: ${guestEmail}
+Phone: ${guestPhone}
+
+Check-in: ${checkIn}
+Check-out: ${checkOut}
+Guests: ${numGuests}
+
+Pricing:
+Nightly rate: $${nightlyRate} × ${numNights} nights = $${subtotal}
+Cleaning fee: $${cleaningFee}
+Service fee: $${serviceFee}
+Taxes: $${taxes}
+TOTAL: $${total}
+
+Guest Message: ${specialRequests}
+
+Actions:
+- Approve and send payment link: [Link to admin dashboard]
+- View booking details: [Link]
+- Contact guest: ${guestEmail}
+`;
+```
+
+---
+
+## PART 5: DATABASE SCHEMA
+
+### Bookings Table:
+```sql
+CREATE TABLE bookings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  property_id TEXT NOT NULL,
+  property_name TEXT NOT NULL,
+  guest_name TEXT NOT NULL,
+  guest_email TEXT NOT NULL,
+  guest_phone TEXT NOT NULL,
+  guest_country TEXT,
+  check_in_date DATE NOT NULL,
+  check_out_date DATE NOT NULL,
+  num_guests INTEGER NOT NULL,
+  num_nights INTEGER NOT NULL,
+  nightly_rate DECIMAL(10,2) NOT NULL,
+  cleaning_fee DECIMAL(10,2) NOT NULL,
+  service_fee DECIMAL(10,2) NOT NULL,
+  taxes DECIMAL(10,2) NOT NULL,
+  total_amount DECIMAL(10,2) NOT NULL,
+  payment_method TEXT NOT NULL, -- 'stripe' or 'pay_later'
+  payment_status TEXT NOT NULL, -- 'pending', 'paid', 'failed'
+  stripe_payment_id TEXT,
+  special_requests TEXT,
+  status TEXT NOT NULL, -- 'pending', 'confirmed', 'cancelled'
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Index for querying availability
+CREATE INDEX idx_bookings_dates ON bookings(property_id, check_in_date, check_out_date);
+```
+
+### Blocked Dates Table (from Airbnb sync):
+```sql
+CREATE TABLE blocked_dates (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  property_id TEXT NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  source TEXT NOT NULL, -- 'airbnb' or 'manual'
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Index for quick availability checks
+CREATE INDEX idx_blocked_dates ON blocked_dates(property_id, start_date, end_date);
+```
+
+---
+
+## PART 6: AVAILABILITY CHECK LOGIC
+
+### Before Allowing Booking:
+```javascript
+async function checkAvailability(propertyId, checkIn, checkOut) {
+  // Convert dates
+  const checkInDate = new Date(checkIn);
+  const checkOutDate = new Date(checkOut);
+  
+  // Check existing bookings
+  const existingBookings = await db.query(`
+    SELECT * FROM bookings 
+    WHERE property_id = $1 
+    AND status IN ('confirmed', 'pending')
+    AND (
+      (check_in_date <= $2 AND check_out_date > $2) OR
+      (check_in_date < $3 AND check_out_date >= $3) OR
+      (check_in_date >= $2 AND check_out_date <= $3)
+    )
+  `, [propertyId, checkInDate, checkOutDate]);
+  
+  if (existingBookings.length > 0) {
+    return { available: false, reason: 'dates_already_booked' };
+  }
+  
+  // Check Airbnb blocked dates
+  const blockedDates = await db.query(`
+    SELECT * FROM blocked_dates 
+    WHERE property_id = $1 
+    AND (
+      (start_date <= $2 AND end_date > $2) OR
+      (start_date < $3 AND end_date >= $3) OR
+      (start_date >= $2 AND end_date <= $3)
+    )
+  `, [propertyId, checkInDate, checkOutDate]);
+  
+  if (blockedDates.length > 0) {
+    return { available: false, reason: 'dates_blocked_airbnb' };
+  }
+  
+  // Check minimum/maximum stay requirements
+  const numNights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
+  if (numNights < 2) {
+    return { available: false, reason: 'minimum_stay_2_nights' };
+  }
+  
+  return { available: true };
+}
+```
+
+---
+
+## PART 7: SEO OPTIMIZATION
+
+### Meta Tags for Each Page:
+```html
+<!-- Homepage -->
+<title>Aloha Stays | Waikiki Vacation Rentals | 2 Properties Available</title>
+<meta name="description" content="Book your Waikiki vacation rental with Aloha Stays. 2 beautiful properties near the beach. Fully equipped, parking included. Book direct and save!">
+
+<!-- Property Pages -->
+<title>[Property Name] | Waikiki Vacation Rental | Aloha Stays</title>
+<meta name="description" content="Book [Property Name] in Waikiki. Sleeps X guests, X bedrooms, walking distance to beach. $XXX/night. View photos and book now!">
+```
+
+### Schema Markup:
+```html
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "LodgingBusiness",
+  "name": "Aloha Stays",
+  "image": "https://alohastays.com/images/property1.jpg",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "Waikiki Area",
+    "addressLocality": "Honolulu",
+    "addressRegion": "HI",
+    "postalCode": "96815",
+    "addressCountry": "US"
+  },
+  "telephone": "+1-808-XXX-XXXX",
+  "priceRange": "$$",
+  "starRating": {
+    "@type": "Rating",
+    "ratingValue": "5"
+  }
+}
+</script>
+```
+
+---
+
+## PART 8: EMAIL NOTIFICATIONS
+
+### Guest Confirmation Email (Pay Now):
+```
+Subject: Booking Confirmed - Aloha Stays
+
+Aloha [Guest Name]!
+
+Your booking has been confirmed! 🌺
+
+BOOKING DETAILS:
+Property: [Property Name]
+Check-in: [Date] at 3:00 PM
+Check-out: [Date] at 11:00 AM
+Guests: [Number]
+
+PAYMENT RECEIPT:
+Total Paid: $[Amount]
+Payment Method: Card ending in [Last 4]
+Receipt: [Link to receipt]
+
+CHECK-IN INSTRUCTIONS:
+[Detailed check-in instructions]
+Building address: [Address]
+Parking: [Parking details]
+WiFi: [WiFi credentials]
+
+WHAT TO BRING:
+- Valid ID
+- Beach towels (provided)
+- Sunscreen
+- Aloha spirit!
+
+NEED HELP?
+Call/Text: (808) XXX-XXXX
+Email: info@alohastays.com
+
+We can't wait to host you!
+
+Mahalo,
+Aloha Stays Team
+```
+
+### Guest Request Email (Pay Later):
+```
+Subject: Booking Request Received - Aloha Stays
+
+Aloha [Guest Name]!
+
+Thank you for your booking request! 
+
+REQUESTED DETAILS:
+Property: [Property Name]
+Check-in: [Date]
+Check-out: [Date]
+Guests: [Number]
+Total: $[Amount]
+
+NEXT STEPS:
+1. We'll review your request within 24 hours
+2. You'll receive a secure payment link via email
+3. Once paid, your booking is confirmed!
+
+Questions? Call us: (808) XXX-XXXX
+
+Mahalo,
+Aloha Stays Team
+```
+
+---
+
+## PART 9: ADMIN DASHBOARD (For You)
+
+### Dashboard Features:
+```
+/admin (password protected)
+
+Overview:
+- Upcoming bookings (next 30 days)
+- Pending payment requests
+- Total revenue this month
+- Occupancy rate
+
+Bookings List:
+- Filter by: Property, Date range, Status
+- View all booking details
+- Send payment link for "Pay Later"
+- Cancel/modify bookings
+- Export to CSV
+
+Calendar View:
+- Month/week view
+- Color-coded by property
+- Show Airbnb bookings (synced)
+- Show website bookings
+- Block dates manually
+
+Settings:
+- Update property details
+- Set pricing (nightly, cleaning, fees)
+- Set minimum stay
+- Update Airbnb iCal URLs
+- Email notification settings
+```
+
+---
+
+## PART 10: MOBILE OPTIMIZATION
+
+### Required Mobile Features:
+```css
+/* Responsive design */
+@media (max-width: 768px) {
+  /* Stack property cards vertically */
+  .property-grid { 
+    grid-template-columns: 1fr; 
+  }
+  
+  /* Full-width booking form */
+  .booking-form {
+    width: 100%;
+    padding: 15px;
+  }
+  
+  /* Touch-friendly buttons */
+  button {
+    min-height: 48px;
+    font-size: 16px;
+  }
+  
+  /* Click-to-call */
+  .phone-number {
+    color: blue;
+    text-decoration: underline;
+  }
+}
+```
+
+### Mobile-Specific Features:
+- Click-to-call phone number
+- Swipeable photo galleries
+- Sticky "Book Now" button
+- Simplified forms
+- GPS directions to properties
+
+---
+
+## PART 11: TESTING CHECKLIST
+
+Before launching, test:
+
+### Booking Flow:
+- [ ] Can select dates and see availability
+- [ ] Blocked dates from Airbnb show as unavailable
+- [ ] Price calculates correctly
+- [ ] "Pay Now" with Stripe works (use test card: 4242 4242 4242 4242)
+- [ ] "Pay Later" sends emails correctly
+- [ ] Confirmation emails arrive
+- [ ] Can't book same dates twice
+
+### Airbnb Sync:
+- [ ] iCal import working
+- [ ] Blocked dates update every hour
+- [ ] Test booking on Airbnb → blocks on website
+
+### Mobile:
+- [ ] Site works on iPhone/Android
+- [ ] Forms are easy to fill
+- [ ] Images load quickly
+- [ ] Calendar is touch-friendly
+
+### SEO:
+- [ ] All pages have unique titles
+- [ ] Meta descriptions present
+- [ ] Images have alt text
+- [ ] Sitemap.xml exists
+- [ ] robots.txt allows crawling
+
+---
+
+## SUMMARY: FEATURES TO IMPLEMENT
+
+✅ **2 Property Pages** with full details and photo galleries
+✅ **Real-time Calendar** synced with Airbnb via iCal
+✅ **Stripe Payment Integration** for instant booking
+✅ **Pay Later Option** with email notifications
+✅ **Automatic Availability Checking** to prevent double bookings
+✅ **Guest & Owner Email Notifications**
+✅ **Admin Dashboard** for managing bookings
+✅ **Mobile-Responsive Design**
+✅ **SEO Optimization** for Waikiki vacation rental searches
+✅ **Contact Form** for inquiries
+
+---
+
+## TECH STACK RECOMMENDATION
+
+```
+Frontend:
+- Next.js (React framework with SSR)
+- Tailwind CSS (styling)
+- React Calendar or react-dates (calendar)
+- Stripe React components (payment)
+
+Backend:
+- Next.js API routes
+- Supabase or PostgreSQL (database)
+- Node-ical (iCal parsing)
+- Nodemailer or SendGrid (emails)
+
+Hosting:
+- Vercel (recommended for Next.js)
+- Or Netlify
+
+Domain:
+- alohastays.com (if available)
+- Or alohastayswaikiki.com
+```
+
+---
+
+## TIMELINE ESTIMATE
+
+**MVP (Minimum Viable Product):**
+- Week 1: Homepage + Property pages + Calendar
+- Week 2: Booking flow + Stripe integration
+- Week 3: Airbnb sync + Email notifications
+- Week 4: Testing + Admin dashboard
+
+**Full Launch:** 4-6 weeks
+
+---
+
+Please build this website with all the features outlined above. Let me know if you need clarification on any part!
