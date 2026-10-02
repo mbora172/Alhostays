@@ -2,8 +2,12 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { log } from "./log";
+import { startCalendarSync } from "./calendar-sync";
 
 const app = express();
+// Behind Replit's (or any) proxy, so req.protocol/host reflect the public URL.
+app.set("trust proxy", true);
 const httpServer = createServer(app);
 
 declare module "http" {
@@ -22,16 +26,7 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
-export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-
-  console.log(`${formattedTime} [${source}] ${message}`);
-}
+export { log };
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -48,8 +43,10 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      // Response bodies can contain guest details, so only log them in development.
+      if (capturedJsonResponse && process.env.NODE_ENV !== "production") {
+        const body = JSON.stringify(capturedJsonResponse);
+        logLine += ` :: ${body.length > 200 ? body.slice(0, 199) + "…" : body}`;
       }
 
       log(logLine);
@@ -66,8 +63,9 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    res.status(status).json({ message });
-    throw err;
+    if (status >= 500) console.error(err);
+    if (res.headersSent) return;
+    res.status(status).json({ message: status >= 500 ? "Internal Server Error" : message });
   });
 
   // importantly only setup vite in development and after
@@ -93,6 +91,7 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      startCalendarSync();
     },
   );
 })();

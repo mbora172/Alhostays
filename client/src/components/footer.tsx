@@ -19,19 +19,19 @@ export function Footer() {
                 <MapPin className="h-5 w-5 text-primary" />
                 <span>Waikiki, Honolulu, HI</span>
               </div>
-              <div className="flex items-center gap-3 text-muted-foreground">
+              <a href="tel:+18085550123" className="flex items-center gap-3 text-muted-foreground hover:text-foreground transition-colors">
                 <Phone className="h-5 w-5 text-primary" />
                 <span>(808) 555-0123</span>
-              </div>
-              <div className="flex items-center gap-3 text-muted-foreground">
+              </a>
+              <a href="mailto:info@alohastays.com" className="flex items-center gap-3 text-muted-foreground hover:text-foreground transition-colors">
                 <Mail className="h-5 w-5 text-primary" />
                 <span>info@alohastays.com</span>
-              </div>
+              </a>
             </div>
           </div>
 
           <div>
-            <h4 className="font-semibold text-foreground mb-4">Quick Links</h4>
+            <h2 className="text-base font-semibold text-foreground mb-4">Quick Links</h2>
             <ul className="space-y-3">
               <li>
                 <Link href="/" className="text-muted-foreground hover:text-foreground transition-colors">
@@ -57,21 +57,27 @@ export function Footer() {
           </div>
 
           <div>
-            <h4 className="font-semibold text-foreground mb-4">Support</h4>
+            <h2 className="text-base font-semibold text-foreground mb-4">Support</h2>
             <ul className="space-y-3">
               <li>
-                <Link href="/contact" className="text-muted-foreground hover:text-foreground transition-colors">
+                <Link href="/contact#faq" className="text-muted-foreground hover:text-foreground transition-colors">
                   FAQ
                 </Link>
               </li>
               <li>
-                <span className="text-muted-foreground">Cancellation Policy</span>
+                <Link href="/policies#cancellation" className="text-muted-foreground hover:text-foreground transition-colors">
+                  Cancellation Policy
+                </Link>
               </li>
               <li>
-                <span className="text-muted-foreground">Terms of Service</span>
+                <Link href="/policies#terms" className="text-muted-foreground hover:text-foreground transition-colors">
+                  Terms of Service
+                </Link>
               </li>
               <li>
-                <span className="text-muted-foreground">Privacy Policy</span>
+                <Link href="/policies#privacy" className="text-muted-foreground hover:text-foreground transition-colors">
+                  Privacy Policy
+                </Link>
               </li>
             </ul>
           </div>

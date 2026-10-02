@@ -29,9 +29,12 @@ import { getPropertyById } from "@/lib/property-data";
 import { bookingFormSchema, type BookingFormData } from "@shared/schema";
 import { differenceInDays, format, parseISO } from "date-fns";
 import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient, ApiError } from "@/lib/queryClient";
+import { calculatePricing } from "@shared/catalog";
+import { usePageTitle } from "@/hooks/use-page-title";
 
 export default function Booking() {
+  usePageTitle("Complete your booking");
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
   const [, setLocation] = useLocation();
@@ -67,37 +70,9 @@ export default function Booking() {
     }
   })();
 
-  const calculatePricing = () => {
-    if (!property || nights <= 0) return null;
-    
-    let discount = 0;
-    if (nights >= 30 && property.monthlyDiscount) {
-      discount = property.monthlyDiscount;
-    } else if (nights >= 7 && property.weeklyDiscount) {
-      discount = property.weeklyDiscount;
-    }
-
-    const subtotal = property.nightlyRate * nights;
-    const discountAmount = Math.round(subtotal * (discount / 100));
-    const discountedSubtotal = subtotal - discountAmount;
-    const serviceFee = Math.round(discountedSubtotal * 0.12);
-    const taxes = Math.round((discountedSubtotal + serviceFee) * 0.0425);
-    const total = discountedSubtotal + property.cleaningFee + serviceFee + taxes;
-
-    return {
-      subtotal,
-      discount,
-      discountAmount,
-      discountedSubtotal,
-      cleaningFee: property.cleaningFee,
-      serviceFee,
-      taxes,
-      total,
-      nightlyRate: property.nightlyRate
-    };
-  };
-
-  const pricing = calculatePricing();
+  const guestCount = Math.min(Math.max(parseInt(guestsParam || "2") || 1, 1), property?.capacity ?? 1);
+  const checkInIsPast = !!checkIn && checkIn < format(new Date(), "yyyy-MM-dd");
+  const pricing = property && !checkInIsPast ? calculatePricing(property, nights) : null;
 
   const bookingMutation = useMutation({
     mutationFn: async (data: BookingFormData) => {
@@ -105,6 +80,7 @@ export default function Booking() {
         throw new Error("Missing booking information");
       }
 
+      // The server re-checks availability and recalculates the price.
       const bookingData = {
         propertyId: property.id,
         guestName: data.guestName,
@@ -113,36 +89,37 @@ export default function Booking() {
         guestCountry: data.guestCountry || "",
         checkIn,
         checkOut,
-        guests: parseInt(guestsParam || "2"),
+        guests: guestCount,
         specialRequests: data.specialRequests || "",
-        nightlyRate: pricing.nightlyRate,
-        nights,
-        cleaningFee: pricing.cleaningFee,
-        serviceFee: pricing.serviceFee,
-        taxes: pricing.taxes,
-        total: pricing.total,
-        status: data.paymentMethod === "pay_later" ? "pending_payment" : "pending",
         paymentMethod: data.paymentMethod,
       };
 
-      return apiRequest("POST", "/api/bookings", bookingData);
+      const res = await apiRequest("POST", "/api/bookings", bookingData);
+      return (await res.json()) as { id: string; total: number };
     },
-    onSuccess: (response, variables) => {
-      if (variables.paymentMethod === "pay_later") {
-        toast({
-          title: "Booking Request Submitted",
-          description: "We'll send you a payment link within 24 hours. Mahalo!",
-        });
-        setLocation("/booking-confirmation?type=request");
-      } else {
-        toast({
-          title: "Booking Confirmed",
-          description: "Your reservation has been confirmed. Check your email for details.",
-        });
-        setLocation("/booking-confirmation?type=confirmed");
-      }
+    onSuccess: (booking, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/availability", property?.id] });
+      const confirmation = new URLSearchParams({
+        type: variables.paymentMethod === "pay_later" ? "request" : "confirmed",
+        ref: booking.id.slice(0, 8).toUpperCase(),
+        property: property!.slug,
+        checkIn: checkIn!,
+        checkOut: checkOut!,
+        total: String(booking.total),
+      });
+      setLocation(`/booking-confirmation?${confirmation.toString()}`);
     },
     onError: (error: Error) => {
+      if (error instanceof ApiError && error.status === 409) {
+        queryClient.invalidateQueries({ queryKey: ["/api/availability", property?.id] });
+        toast({
+          title: "Those dates were just booked",
+          description: "Someone booked these dates moments ago. Please pick new dates.",
+          variant: "destructive",
+        });
+        setLocation(`/property/${property!.slug}#booking`);
+        return;
+      }
       toast({
         title: "Booking Failed",
         description: error.message || "Something went wrong. Please try again.",
@@ -163,7 +140,9 @@ export default function Booking() {
             Invalid Booking Request
           </h1>
           <p className="text-muted-foreground mb-6">
-            Please select a property and dates to continue.
+            {checkInIsPast
+              ? "The selected check-in date has passed. Please choose new dates."
+              : "Please select a property and dates to continue."}
           </p>
           <Button onClick={() => setLocation("/properties")}>
             View Properties
@@ -337,10 +316,10 @@ export default function Booking() {
                                 <RadioGroupItem value="card" id="card" className="mt-1" />
                                 <Label htmlFor="card" className="flex-1 cursor-pointer">
                                   <div className="font-medium text-foreground">
-                                    Pay Now with Card
+                                    Pay by Card
                                   </div>
                                   <p className="text-sm text-muted-foreground mt-1">
-                                    Secure payment via Stripe. Instant confirmation.
+                                    Your dates are held right away and we email a secure card payment link to confirm.
                                   </p>
                                 </Label>
                                 <CreditCard className="h-5 w-5 text-muted-foreground" />
@@ -409,7 +388,7 @@ export default function Booking() {
                   ) : form.watch("paymentMethod") === "pay_later" ? (
                     "Submit Booking Request"
                   ) : (
-                    `Pay $${pricing.total} & Confirm`
+                    `Book Now - $${pricing.total}`
                   )}
                 </Button>
               </form>
@@ -462,7 +441,7 @@ export default function Booking() {
                       <span>Guests</span>
                     </div>
                     <span className="font-medium text-foreground">
-                      {guestsParam} guest{parseInt(guestsParam || "2") > 1 ? 's' : ''}
+                      {guestCount} guest{guestCount > 1 ? "s" : ""}
                     </span>
                   </div>
                 </div>

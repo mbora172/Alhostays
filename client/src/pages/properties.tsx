@@ -1,3 +1,4 @@
+import { usePageTitle } from "@/hooks/use-page-title";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -5,6 +6,7 @@ import { Users, Bed, Star, MapPin } from "lucide-react";
 import { properties } from "@/lib/property-data";
 
 export default function Properties() {
+  usePageTitle("Our Properties");
   return (
     <div className="min-h-screen pt-20 md:pt-24">
       {/* Header */}
@@ -107,14 +109,9 @@ export default function Properties() {
                           </p>
                         )}
                       </div>
-                      <Link href={`/property/${property.slug}`}>
-                        <Button 
-                          size="lg"
-                          data-testid={`button-view-${property.slug}`}
-                        >
-                          View Details
-                        </Button>
-                      </Link>
+                      <Button asChild size="lg" data-testid={`button-view-${property.slug}`}>
+                        <Link href={`/property/${property.slug}`}>View Details</Link>
+                      </Button>
                     </div>
                   </CardContent>
                 </div>
