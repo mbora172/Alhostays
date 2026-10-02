@@ -1,5 +1,5 @@
 import { useLocation, useSearch } from "wouter";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -28,10 +28,13 @@ import {
 import { getPropertyById } from "@/lib/property-data";
 import { bookingFormSchema, type BookingFormData } from "@shared/schema";
 import { differenceInDays, format, parseISO } from "date-fns";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient, ApiError } from "@/lib/queryClient";
+import { calculatePricing } from "@shared/catalog";
+import { usePageTitle } from "@/hooks/use-page-title";
 
 export default function Booking() {
+  usePageTitle("Complete your booking");
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
   const [, setLocation] = useLocation();
@@ -43,7 +46,14 @@ export default function Booking() {
   const guestsParam = params.get("guests");
 
   const property = propertyId ? getPropertyById(propertyId) : null;
-  
+  const cancelledBookingId = params.get("cancelled");
+  const [redirecting, setRedirecting] = useState(false);
+
+  const { data: siteConfig } = useQuery<{ cardPayments: boolean; paymentsTestMode: boolean }>({
+    queryKey: ["/api/config"],
+  });
+  const cardPayments = siteConfig?.cardPayments ?? false;
+
   const form = useForm<BookingFormData>({
     resolver: zodResolver(bookingFormSchema),
     defaultValues: {
@@ -56,6 +66,30 @@ export default function Booking() {
     },
   });
 
+  // Without Stripe configured, only Pay Later is possible.
+  useEffect(() => {
+    if (siteConfig && !siteConfig.cardPayments) form.setValue("paymentMethod", "pay_later");
+  }, [siteConfig, form]);
+
+  // Back from Stripe without paying: release the held dates so they can be rebooked.
+  const abandonSent = useRef(false);
+  useEffect(() => {
+    if (!cancelledBookingId || abandonSent.current) return;
+    abandonSent.current = true;
+    apiRequest("POST", `/api/bookings/${cancelledBookingId}/abandon`)
+      .catch(() => undefined)
+      .finally(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/availability", propertyId] });
+        toast({
+          title: "Payment not completed",
+          description: "No charge was made. You can try again below or choose Pay Later.",
+        });
+        const next = new URLSearchParams(searchString);
+        next.delete("cancelled");
+        setLocation(`/booking?${next.toString()}`, { replace: true });
+      });
+  }, [cancelledBookingId, propertyId, searchString, setLocation, toast]);
+
   // Calculate pricing with validation
   const nights = (() => {
     if (!checkIn || !checkOut) return 0;
@@ -67,37 +101,9 @@ export default function Booking() {
     }
   })();
 
-  const calculatePricing = () => {
-    if (!property || nights <= 0) return null;
-    
-    let discount = 0;
-    if (nights >= 30 && property.monthlyDiscount) {
-      discount = property.monthlyDiscount;
-    } else if (nights >= 7 && property.weeklyDiscount) {
-      discount = property.weeklyDiscount;
-    }
-
-    const subtotal = property.nightlyRate * nights;
-    const discountAmount = Math.round(subtotal * (discount / 100));
-    const discountedSubtotal = subtotal - discountAmount;
-    const serviceFee = Math.round(discountedSubtotal * 0.12);
-    const taxes = Math.round((discountedSubtotal + serviceFee) * 0.0425);
-    const total = discountedSubtotal + property.cleaningFee + serviceFee + taxes;
-
-    return {
-      subtotal,
-      discount,
-      discountAmount,
-      discountedSubtotal,
-      cleaningFee: property.cleaningFee,
-      serviceFee,
-      taxes,
-      total,
-      nightlyRate: property.nightlyRate
-    };
-  };
-
-  const pricing = calculatePricing();
+  const guestCount = Math.min(Math.max(parseInt(guestsParam || "2") || 1, 1), property?.capacity ?? 1);
+  const checkInIsPast = !!checkIn && checkIn < format(new Date(), "yyyy-MM-dd");
+  const pricing = property && !checkInIsPast ? calculatePricing(property, nights) : null;
 
   const bookingMutation = useMutation({
     mutationFn: async (data: BookingFormData) => {
@@ -105,6 +111,7 @@ export default function Booking() {
         throw new Error("Missing booking information");
       }
 
+      // The server re-checks availability and recalculates the price.
       const bookingData = {
         propertyId: property.id,
         guestName: data.guestName,
@@ -113,36 +120,43 @@ export default function Booking() {
         guestCountry: data.guestCountry || "",
         checkIn,
         checkOut,
-        guests: parseInt(guestsParam || "2"),
+        guests: guestCount,
         specialRequests: data.specialRequests || "",
-        nightlyRate: pricing.nightlyRate,
-        nights,
-        cleaningFee: pricing.cleaningFee,
-        serviceFee: pricing.serviceFee,
-        taxes: pricing.taxes,
-        total: pricing.total,
-        status: data.paymentMethod === "pay_later" ? "pending_payment" : "pending",
         paymentMethod: data.paymentMethod,
       };
 
-      return apiRequest("POST", "/api/bookings", bookingData);
+      const res = await apiRequest("POST", "/api/bookings", bookingData);
+      return (await res.json()) as { id: string; total: number; checkoutUrl?: string };
     },
-    onSuccess: (response, variables) => {
-      if (variables.paymentMethod === "pay_later") {
-        toast({
-          title: "Booking Request Submitted",
-          description: "We'll send you a payment link within 24 hours. Mahalo!",
-        });
-        setLocation("/booking-confirmation?type=request");
-      } else {
-        toast({
-          title: "Booking Confirmed",
-          description: "Your reservation has been confirmed. Check your email for details.",
-        });
-        setLocation("/booking-confirmation?type=confirmed");
+    onSuccess: (booking, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/availability", property?.id] });
+      if (booking.checkoutUrl) {
+        // Card: pay on Stripe's secure page, which returns to the confirmation page.
+        setRedirecting(true);
+        window.location.assign(booking.checkoutUrl);
+        return;
       }
+      const confirmation = new URLSearchParams({
+        type: "request",
+        ref: booking.id.slice(0, 8).toUpperCase(),
+        property: property!.slug,
+        checkIn: checkIn!,
+        checkOut: checkOut!,
+        total: String(booking.total),
+      });
+      setLocation(`/booking-confirmation?${confirmation.toString()}`);
     },
     onError: (error: Error) => {
+      if (error instanceof ApiError && error.status === 409) {
+        queryClient.invalidateQueries({ queryKey: ["/api/availability", property?.id] });
+        toast({
+          title: "Those dates were just booked",
+          description: "Someone booked these dates moments ago. Please pick new dates.",
+          variant: "destructive",
+        });
+        setLocation(`/property/${property!.slug}#booking`);
+        return;
+      }
       toast({
         title: "Booking Failed",
         description: error.message || "Something went wrong. Please try again.",
@@ -163,7 +177,9 @@ export default function Booking() {
             Invalid Booking Request
           </h1>
           <p className="text-muted-foreground mb-6">
-            Please select a property and dates to continue.
+            {checkInIsPast
+              ? "The selected check-in date has passed. Please choose new dates."
+              : "Please select a property and dates to continue."}
           </p>
           <Button onClick={() => setLocation("/properties")}>
             View Properties
@@ -327,21 +343,30 @@ export default function Booking() {
                               className="space-y-4"
                             >
                               <div 
-                                className={`flex items-start space-x-4 p-4 border rounded-lg cursor-pointer transition-colors ${
-                                  field.value === "card" 
-                                    ? "border-primary bg-primary/5" 
-                                    : "border-border"
+                                className={`flex items-start space-x-4 p-4 border rounded-lg transition-colors ${
+                                  !cardPayments
+                                    ? "border-border opacity-60 cursor-not-allowed"
+                                    : field.value === "card"
+                                      ? "border-primary bg-primary/5 cursor-pointer"
+                                      : "border-border cursor-pointer"
                                 }`}
-                                onClick={() => field.onChange("card")}
+                                onClick={() => cardPayments && field.onChange("card")}
                               >
-                                <RadioGroupItem value="card" id="card" className="mt-1" />
+                                <RadioGroupItem value="card" id="card" className="mt-1" disabled={!cardPayments} />
                                 <Label htmlFor="card" className="flex-1 cursor-pointer">
                                   <div className="font-medium text-foreground">
                                     Pay Now with Card
                                   </div>
                                   <p className="text-sm text-muted-foreground mt-1">
-                                    Secure payment via Stripe. Instant confirmation.
+                                    {cardPayments
+                                      ? "Secure checkout by Stripe. Your booking is confirmed as soon as payment goes through."
+                                      : "Card payment is temporarily unavailable. Please choose Pay Later."}
                                   </p>
+                                  {cardPayments && siteConfig?.paymentsTestMode && (
+                                    <p className="text-xs font-medium text-amber-600 mt-1">
+                                      Test mode: use card 4242 4242 4242 4242, any future date and any CVC.
+                                    </p>
+                                  )}
                                 </Label>
                                 <CreditCard className="h-5 w-5 text-muted-foreground" />
                               </div>
@@ -401,15 +426,17 @@ export default function Booking() {
                   type="submit" 
                   size="lg"
                   className="w-full py-6 text-lg"
-                  disabled={bookingMutation.isPending}
+                  disabled={bookingMutation.isPending || redirecting}
                   data-testid="button-submit-booking"
                 >
-                  {bookingMutation.isPending ? (
+                  {redirecting ? (
+                    "Opening secure checkout..."
+                  ) : bookingMutation.isPending ? (
                     "Processing..."
                   ) : form.watch("paymentMethod") === "pay_later" ? (
                     "Submit Booking Request"
                   ) : (
-                    `Pay $${pricing.total} & Confirm`
+                    `Pay $${pricing.total} Securely`
                   )}
                 </Button>
               </form>
@@ -462,7 +489,7 @@ export default function Booking() {
                       <span>Guests</span>
                     </div>
                     <span className="font-medium text-foreground">
-                      {guestsParam} guest{parseInt(guestsParam || "2") > 1 ? 's' : ''}
+                      {guestCount} guest{guestCount > 1 ? "s" : ""}
                     </span>
                   </div>
                 </div>

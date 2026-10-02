@@ -244,11 +244,14 @@
     inset: -1px;
   }
 
-  /* Does not work on elements with overflow:hidden! */
-  .hover-elevate:not(.no-default-hover-elevate),
+  /* Does not work on elements with overflow:hidden!
+   * Wrapped in :where() (zero specificity) so utilities like `absolute` or
+   * `fixed` on a button still win; otherwise positioned buttons fall back into
+   * the document flow. */
+  :where(.hover-elevate:not(.no-default-hover-elevate),
   .active-elevate:not(.no-default-active-elevate),
   .hover-elevate-2:not(.no-default-hover-elevate),
-  .active-elevate-2:not(.no-default-active-elevate) {
+  .active-elevate-2:not(.no-default-active-elevate)) {
     position: relative;
     z-index: 0;
   }
@@ -284,5 +287,14 @@
   .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
+  }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 }

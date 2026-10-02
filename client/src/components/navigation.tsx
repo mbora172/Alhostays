@@ -20,10 +20,10 @@ export function Navigation() {
   };
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border/50">
+    <nav aria-label="Main" className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border/50">
       <div className="max-w-7xl mx-auto px-4 md:px-8">
         <div className="flex items-center justify-between h-16 md:h-20">
-          <Link href="/" data-testid="link-logo">
+          <Link href="/" data-testid="link-logo" onClick={() => setMobileMenuOpen(false)}>
             <span className="font-serif text-2xl md:text-3xl font-semibold text-foreground">
               Aloha <span className="text-primary">Stays</span>
             </span>
@@ -44,9 +44,9 @@ export function Navigation() {
                 {link.label}
               </Link>
             ))}
-            <Link href="/properties">
-              <Button data-testid="button-nav-book">Book Now</Button>
-            </Link>
+            <Button asChild data-testid="button-nav-book">
+              <Link href="/properties">Book Now</Link>
+            </Button>
           </div>
 
           <Button
@@ -54,6 +54,8 @@ export function Navigation() {
             size="icon"
             className="md:hidden"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileMenuOpen}
             data-testid="button-mobile-menu"
           >
             {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -79,11 +81,9 @@ export function Navigation() {
                 {link.label}
               </Link>
             ))}
-            <Link href="/properties" onClick={() => setMobileMenuOpen(false)}>
-              <Button className="w-full mt-2" data-testid="button-mobile-book">
-                Book Now
-              </Button>
-            </Link>
+            <Button asChild className="w-full mt-2" data-testid="button-mobile-book">
+              <Link href="/properties" onClick={() => setMobileMenuOpen(false)}>Book Now</Link>
+            </Button>
           </div>
         </div>
       )}

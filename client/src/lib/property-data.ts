@@ -10,22 +10,16 @@ import balcony2 from "@assets/stock_images/ocean_view_balcony_t_83e916ae.jpg";
 import bathroom1 from "@assets/stock_images/modern_bathroom_vaca_2008724f.jpg";
 import bathroom2 from "@assets/stock_images/modern_bathroom_vaca_9de59579.jpg";
 
+import { getCatalogEntry, type PropertyCatalogEntry } from "@shared/catalog";
+
 export { heroImage };
 
-export interface PropertyData {
-  id: string;
-  name: string;
-  slug: string;
+export interface PropertyData extends PropertyCatalogEntry {
   description: string;
   shortDescription: string;
   address: string;
-  capacity: number;
   bedrooms: number;
   bathrooms: number;
-  nightlyRate: number;
-  cleaningFee: number;
-  weeklyDiscount: number;
-  monthlyDiscount: number;
   amenities: string[];
   houseRules: {
     checkIn: string;
@@ -43,19 +37,12 @@ export interface PropertyData {
 
 export const properties: PropertyData[] = [
   {
-    id: "property-1",
-    name: "Sunset Paradise Suite",
-    slug: "sunset-paradise-suite",
+    ...getCatalogEntry("property-1")!,
     description: "Experience the ultimate Hawaiian getaway in our stunning Sunset Paradise Suite. This beautifully appointed 2-bedroom condo offers breathtaking ocean views, modern amenities, and a prime Waikiki location just steps from the beach. Wake up to spectacular sunrises over Diamond Head and end your days watching the sun dip below the Pacific horizon from your private lanai.\n\nThe open-concept living space features contemporary Hawaiian decor, a fully equipped gourmet kitchen, and floor-to-ceiling windows that flood the space with natural light. The master bedroom boasts a king-size bed with premium linens and an ensuite bathroom with a luxurious rain shower. The second bedroom is perfect for families or friends, with two comfortable queen beds.\n\nWhether you're here for a romantic escape, family vacation, or adventure-filled trip, Sunset Paradise Suite provides the perfect home base for exploring everything Oahu has to offer.",
     shortDescription: "Stunning 2BR oceanview suite with modern Hawaiian decor, perfect for families or couples seeking a prime Waikiki location.",
     address: "2100 Kalakaua Avenue, Waikiki, HI 96815",
-    capacity: 6,
     bedrooms: 2,
     bathrooms: 2,
-    nightlyRate: 289,
-    cleaningFee: 150,
-    weeklyDiscount: 10,
-    monthlyDiscount: 20,
     amenities: [
       "Free WiFi",
       "Air Conditioning",
@@ -87,19 +74,12 @@ export const properties: PropertyData[] = [
     ]
   },
   {
-    id: "property-2",
-    name: "Diamond Head Retreat",
-    slug: "diamond-head-retreat",
+    ...getCatalogEntry("property-2")!,
     description: "Discover your perfect Hawaiian hideaway at Diamond Head Retreat. This charming 1-bedroom condo combines classic island elegance with modern comfort, offering a peaceful sanctuary just minutes from Waikiki's vibrant energy. The property features stunning views of Diamond Head crater, creating a picture-perfect backdrop for your island adventure.\n\nThe thoughtfully designed interior showcases warm tropical woods, island-inspired artwork, and comfortable furnishings that invite relaxation. The fully equipped kitchen makes meal prep a breeze, while the spacious living area is ideal for unwinding after a day of exploring. Step onto your private balcony to enjoy your morning coffee with panoramic mountain and partial ocean views.\n\nThe bedroom features a plush king-size bed, blackout curtains for restful sleep, and a generous closet. The spa-like bathroom includes a soaking tub and separate walk-in shower. Diamond Head Retreat is perfect for couples or solo travelers seeking an authentic Hawaiian experience.",
     shortDescription: "Charming 1BR retreat with Diamond Head views, ideal for couples seeking a peaceful Hawaiian escape.",
     address: "2500 Kuhio Avenue, Waikiki, HI 96815",
-    capacity: 4,
     bedrooms: 1,
     bathrooms: 1,
-    nightlyRate: 199,
-    cleaningFee: 100,
-    weeklyDiscount: 10,
-    monthlyDiscount: 20,
     amenities: [
       "Free WiFi",
       "Air Conditioning",

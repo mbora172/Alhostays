@@ -12,6 +12,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import { heroImage, properties, testimonials } from "@/lib/property-data";
+import { usePageTitle } from "@/hooks/use-page-title";
 
 const valueProps = [
   { icon: MapPin, label: "Prime Waikiki Location" },
@@ -22,6 +23,7 @@ const valueProps = [
 ];
 
 export default function Home() {
+  usePageTitle();
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -49,31 +51,22 @@ export default function Home() {
             2 Beautiful Properties in the Heart of Waikiki
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/properties">
-              <Button 
-                size="lg" 
-                className="px-8 py-6 text-lg backdrop-blur-md"
-                data-testid="button-hero-view-properties"
-              >
-                View Properties
-              </Button>
-            </Link>
-            <Link href="/properties">
-              <Button 
-                size="lg" 
-                variant="outline" 
-                className="px-8 py-6 text-lg bg-white/10 backdrop-blur-md border-white/30 text-white"
-                data-testid="button-hero-book-now"
-              >
-                Book Now
-              </Button>
-            </Link>
+            <Button asChild size="lg" className="px-8 py-6 text-lg backdrop-blur-md" data-testid="button-hero-view-properties">
+              <Link href="/properties">Check Availability</Link>
+            </Button>
+            <Button asChild size="lg" variant="outline" className="px-8 py-6 text-lg bg-white/10 backdrop-blur-md border-white/30 text-white" data-testid="button-hero-book-now">
+              <Link href="/contact">Ask a Question</Link>
+            </Button>
           </div>
         </div>
 
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
+        <a
+          href="#properties"
+          aria-label="Scroll to our properties"
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce motion-reduce:animate-none"
+        >
           <ChevronRight className="h-8 w-8 text-white/70 rotate-90" />
-        </div>
+        </a>
       </section>
 
       {/* Value Propositions */}
@@ -99,7 +92,7 @@ export default function Home() {
       </section>
 
       {/* Properties Section */}
-      <section className="py-16 md:py-24">
+      <section id="properties" className="py-16 md:py-24 scroll-mt-16">
         <div className="max-w-6xl mx-auto px-4 md:px-8">
           <div className="text-center mb-12 md:mb-16">
             <h2 className="font-serif text-3xl md:text-4xl font-semibold text-foreground mb-4">
@@ -122,13 +115,14 @@ export default function Home() {
                     <img
                       src={property.images[0]}
                       alt={property.name}
+                      loading="lazy"
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                     <div className="absolute bottom-4 left-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                      <Button variant="secondary" className="w-full backdrop-blur-sm">
+                      <span className="flex w-full items-center justify-center rounded-md bg-white/90 px-4 py-2 text-sm font-medium text-foreground backdrop-blur-sm">
                         View Details
-                      </Button>
+                      </span>
                     </div>
                   </div>
                   <CardContent className="p-6">
@@ -262,15 +256,9 @@ export default function Home() {
             Start planning your perfect Hawaiian vacation today. 
             Our properties book quickly, so reserve your dates now.
           </p>
-          <Link href="/properties">
-            <Button 
-              size="lg" 
-              className="px-10 py-6 text-lg"
-              data-testid="button-cta-book"
-            >
-              Book Now
-            </Button>
-          </Link>
+          <Button asChild size="lg" className="px-10 py-6 text-lg" data-testid="button-cta-book">
+            <Link href="/properties">Book Now</Link>
+          </Button>
         </div>
       </section>
     </div>

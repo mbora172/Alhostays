@@ -66,18 +66,28 @@ export const insertBookingSchema = createInsertSchema(bookings).omit({ id: true,
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
 export type Booking = typeof bookings.$inferSelect;
 
-// Blocked dates (from Airbnb iCal sync)
+// Blocked date ranges imported from external calendars (Airbnb, VRBO, Booking.com, ...)
+// via iCal sync, or added manually. startDate is the first blocked night and
+// endDate is the checkout day (exclusive), matching iCal DTSTART/DTEND.
 export const blockedDates = pgTable("blocked_dates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   propertyId: varchar("property_id").notNull(),
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),
   source: text("source").notNull().default("airbnb"),
+  externalUid: text("external_uid"),
+  summary: text("summary"),
 });
 
 export const insertBlockedDateSchema = createInsertSchema(blockedDates).omit({ id: true });
 export type InsertBlockedDate = z.infer<typeof insertBlockedDateSchema>;
 export type BlockedDate = typeof blockedDates.$inferSelect;
+
+// Public availability shape returned to the browser (no guest details).
+export interface UnavailableRange {
+  startDate: string;
+  endDate: string;
+}
 
 // Inquiries table
 export const inquiries = pgTable("inquiries", {

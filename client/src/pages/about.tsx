@@ -1,3 +1,4 @@
+import { usePageTitle } from "@/hooks/use-page-title";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -53,6 +54,7 @@ const localRecommendations = [
 ];
 
 export default function About() {
+  usePageTitle("About Us");
   return (
     <div className="min-h-screen pt-20 md:pt-24">
       {/* Hero Section */}
@@ -185,11 +187,9 @@ export default function About() {
                   <p className="text-muted-foreground mb-4">
                     {property.shortDescription}
                   </p>
-                  <Link href={`/property/${property.slug}`}>
-                    <Button data-testid={`button-about-view-${property.slug}`}>
-                      View Property
-                    </Button>
-                  </Link>
+                  <Button asChild data-testid={`button-about-view-${property.slug}`}>
+                    <Link href={`/property/${property.slug}`}>View Property</Link>
+                  </Button>
                 </CardContent>
               </Card>
             ))}
@@ -246,16 +246,12 @@ export default function About() {
             your perfect Hawaiian escape.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/properties">
-              <Button size="lg" className="px-8" data-testid="button-about-cta-properties">
-                View Properties
-              </Button>
-            </Link>
-            <Link href="/contact">
-              <Button size="lg" variant="outline" className="px-8" data-testid="button-about-cta-contact">
-                Contact Us
-              </Button>
-            </Link>
+            <Button asChild size="lg" className="px-8" data-testid="button-about-cta-properties">
+              <Link href="/properties">View Properties</Link>
+            </Button>
+            <Button asChild size="lg" variant="outline" className="px-8" data-testid="button-about-cta-contact">
+              <Link href="/contact">Contact Us</Link>
+            </Button>
           </div>
         </div>
       </section>

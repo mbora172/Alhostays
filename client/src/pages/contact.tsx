@@ -25,6 +25,7 @@ import { MapPin, Phone, Mail, Clock, Send } from "lucide-react";
 import { properties } from "@/lib/property-data";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { usePageTitle } from "@/hooks/use-page-title";
 
 const contactFormSchema = z.object({
   name: z.string().min(2, "Name is required"),
@@ -34,6 +35,9 @@ const contactFormSchema = z.object({
   checkIn: z.string().optional(),
   checkOut: z.string().optional(),
   message: z.string().min(10, "Message must be at least 10 characters"),
+}).refine((d) => !d.checkIn || !d.checkOut || d.checkOut > d.checkIn, {
+  message: "Check-out must be after check-in",
+  path: ["checkOut"],
 });
 
 type ContactFormData = z.infer<typeof contactFormSchema>;
@@ -66,6 +70,7 @@ const faqs = [
 ];
 
 export default function Contact() {
+  usePageTitle("Contact");
   const { toast } = useToast();
   
   const form = useForm<ContactFormData>({
@@ -87,7 +92,7 @@ export default function Contact() {
         name: data.name,
         email: data.email,
         phone: data.phone || null,
-        propertyId: data.propertyId || null,
+        propertyId: data.propertyId && data.propertyId !== "general" ? data.propertyId : null,
         checkIn: data.checkIn || null,
         checkOut: data.checkOut || null,
         message: data.message,
@@ -209,7 +214,7 @@ export default function Contact() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Property of Interest</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger data-testid="select-property">
                                 <SelectValue placeholder="Select a property (optional)" />
@@ -363,7 +368,7 @@ export default function Contact() {
         </div>
 
         {/* FAQ Section */}
-        <div className="mt-16">
+        <div id="faq" className="mt-16 scroll-mt-28">
           <h2 className="font-serif text-3xl md:text-4xl font-semibold text-foreground text-center mb-8">
             Frequently Asked Questions
           </h2>
