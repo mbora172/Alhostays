@@ -4,6 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { log } from "./log";
 import { startCalendarSync } from "./calendar-sync";
+import { startPaymentSweeper } from "./payments";
 
 const app = express();
 // Behind Replit's (or any) proxy, so req.protocol/host reflect the public URL.
@@ -92,6 +93,7 @@ app.use((req, res, next) => {
     () => {
       log(`serving on port ${port}`);
       startCalendarSync();
+      startPaymentSweeper();
     },
   );
 })();

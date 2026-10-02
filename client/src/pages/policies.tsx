@@ -17,6 +17,7 @@ const sections = [
     body: [
       "Bookings are for the guests named on the reservation, up to the property's maximum capacity.",
       "Check-in and check-out times and house rules are listed on each property page. Smoking, parties and pets are not allowed.",
+      "Card bookings are confirmed once payment goes through. Unpaid card checkouts are released after 30 minutes.",
       "Pay Later bookings are held as requests until payment is received. We send a payment link within 24 hours.",
       "Our calendars sync with other booking platforms. In the rare case that dates are booked elsewhere at the same moment, we will contact you right away and refund any payment in full.",
     ],
@@ -27,6 +28,7 @@ const sections = [
     body: [
       "We collect only the details needed to manage your stay: your name, email, phone number, country and any requests you share.",
       "We use them to confirm your booking, send check-in instructions and answer your questions. We never sell your information.",
+      "Card payments are processed securely by Stripe. Your card number is never sent to or stored on our website.",
       "Our public availability calendars show which dates are booked, never who booked them.",
       "To see or delete the information we hold about you, contact us at info@alohastays.com.",
     ],

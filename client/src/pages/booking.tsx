@@ -1,5 +1,5 @@
 import { useLocation, useSearch } from "wouter";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import {
 import { getPropertyById } from "@/lib/property-data";
 import { bookingFormSchema, type BookingFormData } from "@shared/schema";
 import { differenceInDays, format, parseISO } from "date-fns";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient, ApiError } from "@/lib/queryClient";
 import { calculatePricing } from "@shared/catalog";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -46,7 +46,14 @@ export default function Booking() {
   const guestsParam = params.get("guests");
 
   const property = propertyId ? getPropertyById(propertyId) : null;
-  
+  const cancelledBookingId = params.get("cancelled");
+  const [redirecting, setRedirecting] = useState(false);
+
+  const { data: siteConfig } = useQuery<{ cardPayments: boolean; paymentsTestMode: boolean }>({
+    queryKey: ["/api/config"],
+  });
+  const cardPayments = siteConfig?.cardPayments ?? false;
+
   const form = useForm<BookingFormData>({
     resolver: zodResolver(bookingFormSchema),
     defaultValues: {
@@ -58,6 +65,30 @@ export default function Booking() {
       paymentMethod: "card",
     },
   });
+
+  // Without Stripe configured, only Pay Later is possible.
+  useEffect(() => {
+    if (siteConfig && !siteConfig.cardPayments) form.setValue("paymentMethod", "pay_later");
+  }, [siteConfig, form]);
+
+  // Back from Stripe without paying: release the held dates so they can be rebooked.
+  const abandonSent = useRef(false);
+  useEffect(() => {
+    if (!cancelledBookingId || abandonSent.current) return;
+    abandonSent.current = true;
+    apiRequest("POST", `/api/bookings/${cancelledBookingId}/abandon`)
+      .catch(() => undefined)
+      .finally(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/availability", propertyId] });
+        toast({
+          title: "Payment not completed",
+          description: "No charge was made. You can try again below or choose Pay Later.",
+        });
+        const next = new URLSearchParams(searchString);
+        next.delete("cancelled");
+        setLocation(`/booking?${next.toString()}`, { replace: true });
+      });
+  }, [cancelledBookingId, propertyId, searchString, setLocation, toast]);
 
   // Calculate pricing with validation
   const nights = (() => {
@@ -95,12 +126,18 @@ export default function Booking() {
       };
 
       const res = await apiRequest("POST", "/api/bookings", bookingData);
-      return (await res.json()) as { id: string; total: number };
+      return (await res.json()) as { id: string; total: number; checkoutUrl?: string };
     },
     onSuccess: (booking, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/availability", property?.id] });
+      if (booking.checkoutUrl) {
+        // Card: pay on Stripe's secure page, which returns to the confirmation page.
+        setRedirecting(true);
+        window.location.assign(booking.checkoutUrl);
+        return;
+      }
       const confirmation = new URLSearchParams({
-        type: variables.paymentMethod === "pay_later" ? "request" : "confirmed",
+        type: "request",
         ref: booking.id.slice(0, 8).toUpperCase(),
         property: property!.slug,
         checkIn: checkIn!,
@@ -306,21 +343,30 @@ export default function Booking() {
                               className="space-y-4"
                             >
                               <div 
-                                className={`flex items-start space-x-4 p-4 border rounded-lg cursor-pointer transition-colors ${
-                                  field.value === "card" 
-                                    ? "border-primary bg-primary/5" 
-                                    : "border-border"
+                                className={`flex items-start space-x-4 p-4 border rounded-lg transition-colors ${
+                                  !cardPayments
+                                    ? "border-border opacity-60 cursor-not-allowed"
+                                    : field.value === "card"
+                                      ? "border-primary bg-primary/5 cursor-pointer"
+                                      : "border-border cursor-pointer"
                                 }`}
-                                onClick={() => field.onChange("card")}
+                                onClick={() => cardPayments && field.onChange("card")}
                               >
-                                <RadioGroupItem value="card" id="card" className="mt-1" />
+                                <RadioGroupItem value="card" id="card" className="mt-1" disabled={!cardPayments} />
                                 <Label htmlFor="card" className="flex-1 cursor-pointer">
                                   <div className="font-medium text-foreground">
-                                    Pay by Card
+                                    Pay Now with Card
                                   </div>
                                   <p className="text-sm text-muted-foreground mt-1">
-                                    Your dates are held right away and we email a secure card payment link to confirm.
+                                    {cardPayments
+                                      ? "Secure checkout by Stripe. Your booking is confirmed as soon as payment goes through."
+                                      : "Card payment is temporarily unavailable. Please choose Pay Later."}
                                   </p>
+                                  {cardPayments && siteConfig?.paymentsTestMode && (
+                                    <p className="text-xs font-medium text-amber-600 mt-1">
+                                      Test mode: use card 4242 4242 4242 4242, any future date and any CVC.
+                                    </p>
+                                  )}
                                 </Label>
                                 <CreditCard className="h-5 w-5 text-muted-foreground" />
                               </div>
@@ -380,15 +426,17 @@ export default function Booking() {
                   type="submit" 
                   size="lg"
                   className="w-full py-6 text-lg"
-                  disabled={bookingMutation.isPending}
+                  disabled={bookingMutation.isPending || redirecting}
                   data-testid="button-submit-booking"
                 >
-                  {bookingMutation.isPending ? (
+                  {redirecting ? (
+                    "Opening secure checkout..."
+                  ) : bookingMutation.isPending ? (
                     "Processing..."
                   ) : form.watch("paymentMethod") === "pay_later" ? (
                     "Submit Booking Request"
                   ) : (
-                    `Book Now - $${pricing.total}`
+                    `Pay $${pricing.total} Securely`
                   )}
                 </Button>
               </form>

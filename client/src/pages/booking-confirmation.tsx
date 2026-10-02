@@ -1,7 +1,9 @@
 import { Link, useSearch } from "wouter";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle, Clock, Mail, Phone, Calendar, Home, Download } from "lucide-react";
+import { CheckCircle, Clock, Mail, Phone, Calendar, Home, Download, Loader2, XCircle } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { getPropertyBySlug } from "@/lib/property-data";
 import { usePageTitle } from "@/hooks/use-page-title";
@@ -30,7 +32,6 @@ function tripCalendarHref(name: string, address: string, checkIn: string, checkO
 }
 
 export default function BookingConfirmation() {
-  usePageTitle("Booking received");
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
   const type = params.get("type");
@@ -41,7 +42,66 @@ export default function BookingConfirmation() {
   const total = params.get("total");
   const hasTrip = !!property && isIsoDate(checkIn) && isIsoDate(checkOut);
 
-  const isRequest = type === "request";
+  const sessionId = params.get("session_id");
+
+  // For card payments, ask the server (which asks Stripe) whether the payment
+  // went through. Re-check briefly while Stripe finishes processing.
+  const [polls, setPolls] = useState(0);
+  const { data: payment, isError: paymentCheckFailed } = useQuery<{ outcome: string }>({
+    queryKey: [`/api/checkout/${sessionId}/status`],
+    enabled: type === "paid" && !!sessionId,
+    refetchInterval: (query) => {
+      const outcome = query.state.data?.outcome;
+      return (outcome === "processing" || outcome === "unpaid") && polls < 10 ? 2000 : false;
+    },
+    staleTime: 0,
+  });
+  useEffect(() => {
+    if (payment) setPolls((n) => n + 1);
+  }, [payment]);
+
+  type View = "request" | "checking" | "confirmed" | "processing" | "failed";
+  const view: View =
+    type !== "paid"
+      ? "request"
+      : !sessionId || paymentCheckFailed
+        ? "processing"
+        : !payment
+          ? "checking"
+          : payment.outcome === "confirmed"
+            ? "confirmed"
+            : payment.outcome === "processing" || (payment.outcome === "unpaid" && polls < 10)
+              ? "processing"
+              : "failed";
+
+  const copy: Record<View, { title: string; body: string; next: string }> = {
+    request: {
+      title: "Booking Request Submitted!",
+      body: "Thank you for your booking request. We'll review your reservation and send you a payment link within 24 hours.",
+      next: "We'll email a secure payment link to complete your booking, then check-in instructions before you arrive",
+    },
+    checking: {
+      title: "Confirming your payment...",
+      body: "This only takes a moment.",
+      next: "We'll email check-in instructions 24-48 hours before you arrive",
+    },
+    confirmed: {
+      title: "Booking Confirmed!",
+      body: "Mahalo! Your payment went through and your stay is confirmed.",
+      next: "We'll email check-in instructions 24-48 hours before you arrive",
+    },
+    processing: {
+      title: "Payment Processing",
+      body: "Your payment is being processed. Your dates are held and you'll get an email from us once it's complete.",
+      next: "We'll email you as soon as the payment completes, then check-in instructions before you arrive",
+    },
+    failed: {
+      title: "Payment Not Completed",
+      body: "Your payment didn't go through, so no charge was made and the dates were released. Please try again or contact us.",
+      next: "If you were charged, contact us and we'll sort it out right away",
+    },
+  };
+  usePageTitle(copy[view].title.replace(/[!.]+$/, ""));
 
   return (
     <div className="min-h-screen pt-20 md:pt-24 pb-12 flex items-center justify-center">
@@ -49,10 +109,14 @@ export default function BookingConfirmation() {
         <Card className="p-8 md:p-12">
           <CardContent className="p-0">
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
-              {isRequest ? (
-                <Clock className="h-10 w-10 text-primary" />
-              ) : (
+              {view === "checking" ? (
+                <Loader2 className="h-10 w-10 text-primary animate-spin" />
+              ) : view === "confirmed" ? (
                 <CheckCircle className="h-10 w-10 text-primary" />
+              ) : view === "failed" ? (
+                <XCircle className="h-10 w-10 text-destructive" />
+              ) : (
+                <Clock className="h-10 w-10 text-primary" />
               )}
             </div>
 
@@ -60,18 +124,20 @@ export default function BookingConfirmation() {
               className="font-serif text-3xl md:text-4xl font-bold text-foreground mb-4"
               data-testid="text-confirmation-title"
             >
-              {isRequest ? "Booking Request Submitted!" : "Your Dates Are Held!"}
+              {copy[view].title}
             </h1>
 
             <p className="text-lg text-muted-foreground mb-8 max-w-md mx-auto">
-              {isRequest ? (
-                "Thank you for your booking request. We'll review your reservation and send you a payment link within 24 hours."
-              ) : (
-                "Mahalo! We've reserved your dates and will email a secure payment link to confirm your stay."
-              )}
+              {copy[view].body}
             </p>
 
-            {hasTrip && (
+            {view === "failed" && property && (
+              <Button asChild size="lg" className="mb-8" data-testid="button-try-again">
+                <Link href={`/property/${property.slug}`}>Choose dates again</Link>
+              </Button>
+            )}
+
+            {hasTrip && view !== "failed" && (
               <div className="bg-primary/5 border border-primary/20 rounded-lg p-6 mb-6 text-left" data-testid="card-trip-summary">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div>
@@ -102,7 +168,7 @@ export default function BookingConfirmation() {
                   <div>
                     <p className="font-medium text-foreground">Check your email</p>
                     <p className="text-sm text-muted-foreground">
-                      We'll email a payment link to complete your booking, then check-in instructions before you arrive
+                      {copy[view].next}
                     </p>
                   </div>
                 </li>
@@ -113,7 +179,7 @@ export default function BookingConfirmation() {
                     <p className="text-sm text-muted-foreground">
                       Add your trip to your calendar so you don't forget!
                     </p>
-                    {hasTrip && (
+                    {hasTrip && view !== "failed" && (
                       <a
                         href={tripCalendarHref(property!.name, property!.address, checkIn, checkOut, ref)}
                         download={`aloha-stays-${property!.slug}.ics`}

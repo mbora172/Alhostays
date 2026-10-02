@@ -15,7 +15,7 @@ import fs from "fs";
 import path from "path";
 import pg from "pg";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { and, desc, eq, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 
 /** Booking statuses that no longer hold the dates. */
 export const RELEASED_BOOKING_STATUSES = ["cancelled", "declined"];
@@ -23,6 +23,8 @@ export const RELEASED_BOOKING_STATUSES = ["cancelled", "declined"];
 export function bookingHoldsDates(booking: Booking): boolean {
   return !RELEASED_BOOKING_STATUSES.includes(booking.status);
 }
+
+export type BookingPatch = Partial<Pick<Booking, "status" | "paymentIntentId">>;
 
 export interface IStorage {
   // Bookings
@@ -36,6 +38,11 @@ export interface IStorage {
    */
   createBookingIfAvailable(booking: InsertBooking): Promise<Booking | null>;
   updateBookingStatus(id: string, status: string): Promise<Booking | undefined>;
+  /**
+   * Updates a booking only if its current status is one of `fromStatuses`
+   * (when given). Returns the updated booking, or undefined if nothing changed.
+   */
+  updateBooking(id: string, patch: BookingPatch, fromStatuses?: string[]): Promise<Booking | undefined>;
 
   // Inquiries
   getInquiries(): Promise<Inquiry[]>;
@@ -169,9 +176,14 @@ export class MemStorage implements IStorage {
   }
 
   async updateBookingStatus(id: string, status: string): Promise<Booking | undefined> {
+    return this.updateBooking(id, { status });
+  }
+
+  async updateBooking(id: string, patch: BookingPatch, fromStatuses?: string[]): Promise<Booking | undefined> {
     const booking = this.bookings.get(id);
     if (!booking) return undefined;
-    booking.status = status;
+    if (fromStatuses && !fromStatuses.includes(booking.status)) return undefined;
+    Object.assign(booking, patch);
     await this.persist();
     return booking;
   }
@@ -338,12 +350,15 @@ export class DbStorage implements IStorage {
   }
 
   async updateBookingStatus(id: string, status: string): Promise<Booking | undefined> {
+    return this.updateBooking(id, { status });
+  }
+
+  async updateBooking(id: string, patch: BookingPatch, fromStatuses?: string[]): Promise<Booking | undefined> {
     await this.ready;
-    const [row] = await this.db
-      .update(bookingsTable)
-      .set({ status })
-      .where(eq(bookingsTable.id, id))
-      .returning();
+    const where = fromStatuses
+      ? and(eq(bookingsTable.id, id), inArray(bookingsTable.status, fromStatuses))
+      : eq(bookingsTable.id, id);
+    const [row] = await this.db.update(bookingsTable).set(patch).where(where).returning();
     return row;
   }
 

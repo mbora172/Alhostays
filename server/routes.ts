@@ -12,6 +12,16 @@ import {
   todayInHawaii,
 } from "@shared/catalog";
 import { buildPropertyCalendar, ensureFresh, getSyncStatus, syncAll } from "./calendar-sync";
+import {
+  CHECKOUT_HOLD_MINUTES,
+  abandonCheckout,
+  cardPaymentsEnabled,
+  createCheckoutSession,
+  createPaymentLink,
+  handleWebhook,
+  isTestMode,
+  syncCheckoutSession,
+} from "./payments";
 import { z } from "zod";
 
 const isoDate = z.string().refine(isIsoDate, "Must be a date in yyyy-MM-dd format");
@@ -40,7 +50,7 @@ const inquiryRequestSchema = insertInquirySchema.extend({
   checkOut: isoDate.optional().nullable().or(z.literal("")),
 });
 
-const BOOKING_STATUSES = ["pending", "pending_payment", "confirmed", "cancelled", "declined"] as const;
+const BOOKING_STATUSES = ["pending", "pending_payment", "awaiting_payment", "confirmed", "cancelled", "declined"] as const;
 
 const MAX_NIGHTS = 90;
 // Re-check external calendars before accepting a booking if data is older than this.
@@ -99,11 +109,23 @@ async function getUnavailableRanges(propertyId: string): Promise<UnavailableRang
   return merged;
 }
 
+/** Public site address for Stripe redirects. PUBLIC_URL wins over request headers. */
+function siteUrl(req: Request): string {
+  const configured = process.env.PUBLIC_URL?.trim().replace(/\/$/, "");
+  return configured || `${req.protocol}://${req.get("host")}`;
+}
+
 function resolveProperty(idOrSlug: string) {
   return getCatalogEntry(idOrSlug) ?? propertyCatalog.find((p) => p.slug === idOrSlug);
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  // --- Public: site configuration ---
+
+  app.get("/api/config", (_req, res) => {
+    res.json({ cardPayments: cardPaymentsEnabled(), paymentsTestMode: isTestMode() });
+  });
+
   // --- Public: availability ---
 
   const availabilityHandler = async (req: Request, res: Response) => {
@@ -158,6 +180,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (nights > MAX_NIGHTS) {
         return res.status(400).json({ error: `Stays longer than ${MAX_NIGHTS} nights must be arranged by contacting us` });
       }
+      if (data.paymentMethod === "card" && !cardPaymentsEnabled()) {
+        return res.status(400).json({ error: "Card payments aren't available right now. Please choose Pay Later." });
+      }
       if (data.guests > property.capacity) {
         return res.status(400).json({ error: `This property sleeps up to ${property.capacity} guests` });
       }
@@ -186,7 +211,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         serviceFee: pricing.serviceFee,
         taxes: pricing.taxes,
         total: pricing.total,
-        status: data.paymentMethod === "pay_later" ? "pending_payment" : "pending",
+        // Card bookings hold the dates while the guest pays on Stripe.
+        status: data.paymentMethod === "card" ? "awaiting_payment" : "pending_payment",
         paymentMethod: data.paymentMethod,
       });
 
@@ -196,7 +222,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
+      let checkoutUrl: string | undefined;
+      if (data.paymentMethod === "card") {
+        const confirmation = new URLSearchParams({
+          type: "paid",
+          ref: booking.id.slice(0, 8).toUpperCase(),
+          property: property.slug,
+          checkIn: booking.checkIn,
+          checkOut: booking.checkOut,
+          total: String(booking.total),
+        });
+        const back = new URLSearchParams({
+          propertyId: property.id,
+          checkIn: booking.checkIn,
+          checkOut: booking.checkOut,
+          guests: String(booking.guests),
+          cancelled: booking.id,
+        });
+        try {
+          checkoutUrl = await createCheckoutSession(booking, siteUrl(req), {
+            expiresInMinutes: CHECKOUT_HOLD_MINUTES,
+            successPath: `/booking-confirmation?${confirmation.toString()}`,
+            cancelPath: `/booking?${back.toString()}`,
+          });
+        } catch (error) {
+          console.error(error);
+          await storage.updateBooking(booking.id, { status: "cancelled" }, ["awaiting_payment"]);
+          return res.status(502).json({
+            error: "We couldn't start the card payment. Please try again or choose Pay Later.",
+          });
+        }
+      }
+
       res.status(201).json({
+        checkoutUrl,
         id: booking.id,
         propertyId: booking.propertyId,
         checkIn: booking.checkIn,
@@ -209,6 +268,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
     } catch (error) {
       handleError(res, error, "Failed to create booking");
+    }
+  });
+
+  // --- Public: Stripe ---
+
+  // Stripe calls this; the signature is checked against STRIPE_WEBHOOK_SECRET.
+  app.post("/api/stripe/webhook", async (req, res) => {
+    try {
+      const raw = req.rawBody;
+      if (!Buffer.isBuffer(raw)) return res.status(400).json({ error: "Missing body" });
+      await handleWebhook(raw, req.get("stripe-signature") ?? "");
+      res.json({ received: true });
+    } catch (error) {
+      const status = (error as { status?: number }).status ?? 500;
+      if (status >= 500) console.error(error);
+      res.status(status).json({ error: (error as Error).message });
+    }
+  });
+
+  // The confirmation page asks for the payment result; the answer comes from Stripe.
+  app.get("/api/checkout/:sessionId/status", async (req, res) => {
+    try {
+      res.set("Cache-Control", "no-store");
+      res.json({ outcome: await syncCheckoutSession(req.params.sessionId) });
+    } catch (error) {
+      handleError(res, error, "Couldn't check the payment status");
+    }
+  });
+
+  // Guest returned from Stripe without paying: release the held dates right away.
+  app.post("/api/bookings/:id/abandon", async (req, res) => {
+    try {
+      res.json({ released: await abandonCheckout(req.params.id) });
+    } catch (error) {
+      handleError(res, error, "Couldn't cancel the checkout");
     }
   });
 
@@ -259,6 +353,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(booking);
     } catch (error) {
       handleError(res, error, "Failed to update booking");
+    }
+  });
+
+  // Stripe payment link for a Pay Later booking (valid 24 hours). Email it to the guest.
+  app.post("/api/bookings/:id/payment-link", requireAdmin, async (req, res) => {
+    try {
+      if (!cardPaymentsEnabled()) return res.status(400).json({ error: "Set STRIPE_SECRET_KEY first" });
+      const booking = await storage.getBookingById(req.params.id);
+      if (!booking) return res.status(404).json({ error: "Booking not found" });
+      if (!["pending_payment", "pending"].includes(booking.status)) {
+        return res.status(409).json({ error: `Booking is ${booking.status}` });
+      }
+      res.json({ url: await createPaymentLink(booking, siteUrl(req)) });
+    } catch (error) {
+      handleError(res, error, "Failed to create payment link");
     }
   });
 
